@@ -72,6 +72,35 @@ class DevicesStandardEventsInfo(BaseModel):
     type: StandardEventType = Field(description="イベント種別")
     timestamp: datetime = Field(description="イベント登録時刻")
 
+class DeveicesAreaCountSettingsInfo(BaseModel):
+    setting_id: int = Field(description="検知エリアID")
+    setting_name: str = Field(description="検知エリア名")
+
+class DeveicesAreaCountResulsInfo(BaseModel):
+    detected_on: datetime = Field(description="検知時刻")
+    setting_id: int = Field(description="検知エリアID")
+    setting_name: str = Field(description="検知エリア名")
+    stay_time: int = Field(description="滞在時間")
+
+class DeveicesLineCountSettingsInfo(BaseModel):
+    setting_id: int = Field(description="検知ラインID")
+    setting_name: str = Field(description="検知ライン名")
+    direction: str = Field(description="通過方向")
+
+class DeveicesLineCountResulsInfo(BaseModel):
+    detected_on: datetime = Field(description="検知時刻")
+    setting_id: int = Field(description="検知ラインID")
+    setting_name: str = Field(description="検知ライン名")
+    direction: str = Field(description="通過方向")
+
+class DeveicesPeopleDetectionSettingsInfo(BaseModel):
+    setting_id: int = Field(description="検知エリアID")
+    setting_name: str = Field(description="検知エリア名")
+
+class DeveicesPeopleDetectionResulsInfo(BaseModel):
+    detected_on: datetime = Field(description="検知時刻")
+    setting_id: int = Field(description="検知ラインID")
+    setting_name: str = Field(description="検知ライン名")
 
 def _get_auth_headers():
     if ACCESS_TOKEN is not None:
@@ -262,6 +291,251 @@ def list_device_standard_events(
         ]
 
     return events
+
+@mcp.tool()
+def get_device_area_count_settings(
+    device_id: str = Field(description="デバイスID"),
+) -> list[DeveicesAreaCountSettingsInfo]:
+    """
+    指定されたデバイスの立ち入りカウントのエリア設定一覧を取得します
+    """
+
+    results, offset, limit, has_next = [], 0, 100, True
+    while has_next:
+        r = httpx.get(
+            url=BASE_URL + f"/v2/aiapp/people_count/devices/{device_id}/area_count/settings",
+            headers=_get_auth_headers(),
+            params={
+                "offset": offset,
+                "limit": limit
+            },
+        )
+        r.raise_for_status()
+        response = r.json()
+        has_next = len(response["list"]) == limit
+        offset += len(response["list"])
+
+        results += [
+            DeveicesAreaCountSettingsInfo.model_validate(e) for e in response["list"]
+        ]
+
+    return results
+
+
+@mcp.tool()
+def get_device_area_count_result(
+    device_id: str = Field(description="デバイスID"),
+    start: AwareDatetime = Field(
+        description="取得範囲の開始時間 (タイムゾーン情報を含める必要がある)"
+    ),
+    end: AwareDatetime = Field(
+        description="取得範囲の終了時間 (タイムゾーン情報を含める必要がある. また現在時刻から1分以上前の時刻である必要がある)"
+    ),
+) -> list[DeveicesAreaCountResulsInfo]:
+    """
+    指定されたデバイスの立ち入りカウント結果を取得します
+
+    制限:
+    - start/endの取得最大範囲は 1日（86400秒）です
+    """
+    if not start.tzinfo == end.tzinfo:
+        raise ValueError("start and end must be in the same timezone")
+
+    current_timestamp = datetime.now(tz=timezone.utc)
+    if end + timedelta(minutes=1) > current_timestamp:
+        raise ValueError(
+            "The end time must be at least 1 minute before the current time"
+        )
+
+    duration = (end - start).total_seconds()
+    if (duration < 60) or (86400 < duration):
+        raise ValueError("The duration must be between 1 minute and 1 day")
+
+    results, offset, limit, has_next = [], 0, 100, True
+    while has_next:
+        r = httpx.get(
+            url=BASE_URL + f"/v2/aiapp/people_count/devices/{device_id}/area_count/results",
+            headers=_get_auth_headers(),
+            params={
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "offset": offset,
+                "limit": limit
+            },
+        )
+        r.raise_for_status()
+        response = r.json()
+        has_next = len(response["list"]) == limit
+        offset += len(response["list"])
+
+        results += [
+            DeveicesAreaCountResulsInfo.model_validate(e) for e in response["list"]
+        ]
+
+    return results
+
+@mcp.tool()
+def get_device_line_count_settings(
+    device_id: str = Field(description="デバイスID"),
+) -> list[DeveicesLineCountSettingsInfo]:
+    """
+    指定されたデバイスの通過人数カウントのエリア設定一覧を取得します
+    """
+
+    results, offset, limit, has_next = [], 0, 100, True
+    while has_next:
+        r = httpx.get(
+            url=BASE_URL + f"/v2/aiapp/people_count/devices/{device_id}/line_count/settings",
+            headers=_get_auth_headers(),
+            params={
+                "offset": offset,
+                "limit": limit
+            },
+        )
+        r.raise_for_status()
+        response = r.json()
+        has_next = len(response["list"]) == limit
+        offset += len(response["list"])
+
+        results += [
+            DeveicesLineCountSettingsInfo.model_validate(e) for e in response["list"]
+        ]
+
+    return results
+
+@mcp.tool()
+def get_device_line_count_result(
+    device_id: str = Field(description="デバイスID"),
+    start: AwareDatetime = Field(
+        description="取得範囲の開始時間 (タイムゾーン情報を含める必要がある)"
+    ),
+    end: AwareDatetime = Field(
+        description="取得範囲の終了時間 (タイムゾーン情報を含める必要がある. また現在時刻から1分以上前の時刻である必要がある)"
+    ),
+) -> list[DeveicesLineCountResulsInfo]:
+    """
+    指定されたデバイスの通過人数カウント結果を取得します
+
+    制限:
+    - start/endの取得最大範囲は 1日（86400秒）です
+    """
+    if not start.tzinfo == end.tzinfo:
+        raise ValueError("start and end must be in the same timezone")
+
+    current_timestamp = datetime.now(tz=timezone.utc)
+    if end + timedelta(minutes=1) > current_timestamp:
+        raise ValueError(
+            "The end time must be at least 1 minute before the current time"
+        )
+
+    duration = (end - start).total_seconds()
+    if (duration < 60) or (86400 < duration):
+        raise ValueError("The duration must be between 1 minute and 1 day")
+
+    results, offset, limit, has_next = [], 0, 100, True
+    while has_next:
+        r = httpx.get(
+            url=BASE_URL + f"/v2/aiapp/people_count/devices/{device_id}/line_count/results",
+            headers=_get_auth_headers(),
+            params={
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "offset": offset,
+                "limit": limit
+            },
+        )
+        r.raise_for_status()
+        response = r.json()
+        has_next = len(response["list"]) == limit
+        offset += len(response["list"])
+
+        results += [
+            DeveicesLineCountResulsInfo.model_validate(e) for e in response["list"]
+        ]
+
+    return results
+
+@mcp.tool()
+def get_device_people_detection_settings(
+    device_id: str = Field(description="デバイスID"),
+) -> list[DeveicesPeopleDetectionSettingsInfo]:
+    """
+    指定されたデバイスの立ち入り人検知のエリア設定一覧を取得します
+    """
+
+    results, offset, limit, has_next = [], 0, 100, True
+    while has_next:
+        r = httpx.get(
+            url=BASE_URL + f"/v2/aiapp/people_count/devices/{device_id}/people_detection/settings",
+            headers=_get_auth_headers(),
+            params={
+                "offset": offset,
+                "limit": limit
+            },
+        )
+        r.raise_for_status()
+        response = r.json()
+        has_next = len(response["list"]) == limit
+        offset += len(response["list"])
+
+        results += [
+            DeveicesPeopleDetectionSettingsInfo.model_validate(e) for e in response["list"]
+        ]
+
+    return results
+
+
+@mcp.tool()
+def get_device_people_detection_result(
+    device_id: str = Field(description="デバイスID"),
+    start: AwareDatetime = Field(
+        description="取得範囲の開始時間 (タイムゾーン情報を含める必要がある)"
+    ),
+    end: AwareDatetime = Field(
+        description="取得範囲の終了時間 (タイムゾーン情報を含める必要がある. また現在時刻から1分以上前の時刻である必要がある)"
+    ),
+) -> list[DeveicesPeopleDetectionResulsInfo]:
+    """
+    指定されたデバイスの立ち入り人検知結果を取得します
+
+    制限:
+    - start/endの取得最大範囲は 1日（86400秒）です
+    """
+    if not start.tzinfo == end.tzinfo:
+        raise ValueError("start and end must be in the same timezone")
+
+    current_timestamp = datetime.now(tz=timezone.utc)
+    if end + timedelta(minutes=1) > current_timestamp:
+        raise ValueError(
+            "The end time must be at least 1 minute before the current time"
+        )
+
+    duration = (end - start).total_seconds()
+    if (duration < 60) or (86400 < duration):
+        raise ValueError("The duration must be between 1 minute and 1 day")
+
+    results, offset, limit, has_next = [], 0, 100, True
+    while has_next:
+        r = httpx.get(
+            url=BASE_URL + f"/v2/aiapp/people_count/devices/{device_id}/people_detection/results",
+            headers=_get_auth_headers(),
+            params={
+                "start": start.isoformat(),
+                "end": end.isoformat(),
+                "offset": offset,
+                "limit": limit
+            },
+        )
+        r.raise_for_status()
+        response = r.json()
+        has_next = len(response["list"]) == limit
+        offset += len(response["list"])
+
+        results += [
+            DeveicesPeopleDetectionResulsInfo.model_validate(e) for e in response["list"]
+        ]
+
+    return results
 
 
 def run():
